@@ -1,0 +1,223 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2638
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 AndaleMono;}
+{\colortbl;\red255\green255\blue255;\red47\green255\blue18;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c15686\c99608\c7843;\csgray\c0\c90000;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww35640\viewh19300\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs30 \cf2 \cb3 \CocoaLigature0 chcloraebsdb502:CLONEDB:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin> perl adcfgclone.pl dbTechStack\
+\
+                     Copyright (c) 2002, 2015 Oracle Corporation\
+                        Redwood Shores, California, USA\
+\
+                        Oracle E-Business Suite Rapid Clone\
+\
+                                 Version 12.2\
+\
+                      adcfgclone Version 120.63.12020000.65\
+\
+Enter the APPS password : \
+\
+Running: Context clone...\
+\
+Log file located at /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/CloneContext_0728023529.log\
+\
+Provide the values required for creation of the new Database Context file.\
+\
+Target System Hostname (virtual or normal) [chcloraebsdb502] : \
+\
+Target System Base Directory : /u01/app/oracle/CLONEDB\
+\
+Target Instance is RAC (y/n) [n] : n\
+\
+Target System Database SID : CLONEDB\
+\
+Role separation is supported y/n [n] ? : n\
+\
+Target System utl_file_dir Directory List : /usr/tmp,/u04/oracle/R12/CLONEDB/applptmp,/u04/oracle/R12/CLONEDB/appltmp,/u01/app/oracle/CLONEDB/db/tech_s/12.1.0/appsutil/outbound/CLONEDB_chcloraebsdb502\
+\
+Number of DATA_TOP's on the Target System [3] : 1\
+\
+Target System DATA_TOP Directory 1 : +DATHCX7\
+\
+Target System RDBMS ORACLE_HOME Directory [/u01/app/oracle/CLONEDB/12.1.0] : /u01/app/oracle/CLONEDB/db/tech_st/12.1.0\
+\
+Do you want to preserve the Display [chcloraebsdb502:0.0] (y/n)  : n\
+\
+Target System Display [chcloraebsdb502:0.0] : \
+\
+Target System Port Pool [0-99] : 79\
+\
+Checking the port pool 79\
+done: Port Pool 79 is free\
+Report file located at /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/temp/portpool.lst\
+The new database context file has been created :\
+  /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/CLONEDB_chcloraebsdb502.xml\
+Check Clone Context logfile /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/CloneContext_0728023529.log for details.\
+\
+Running Rapid Clone with command:\
+\
+Running:\
+perl /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/adclone.pl java=/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/../jre mode=apply stage=/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone component=dbTechStack method=CUSTOM dbctxtg=/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/CLONEDB_chcloraebsdb502.xml showProgress contextValidated=true\
+\
+\
+Beginning rdbms home Apply - Thu Jul 28 02:42:24 2022\
+\
+/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/../jre/bin/java -Xmx600M -Doracle.jdbc.autoCommitSpecCompliant=false -DCONTEXT_VALIDATED=true -Doracle.installer.oui_loc=/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/oui -classpath /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/xmlparserv2.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/ojdbc6.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/java:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/oui/OraInstaller.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/oui/ewt3.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/oui/share.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/oui/srvm.jar:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/jlib/ojmisc.jar   oracle.apps.ad.clone.ApplyDBTechStack -e /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/CLONEDB_chcloraebsdb502.xml -stage /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone   -showProgress\
+APPS Password : Log file located at /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/log/CLONEDB_chcloraebsdb502/ApplyDBTechStack_07280242.log\
+  /      0% completed       \
+\
+Completed Apply...\
+Thu Jul 28 02:44:06 2022\
+\
+Starting database listener for CLONEDB:\
+Running:\
+/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/scripts/CLONEDB_chcloraebsdb502/addlnctl.sh start CLONEDB\
+Logfile: /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/log/CLONEDB_chcloraebsdb502/addlnctl.txt\
+\
+You are running addlnctl.sh version 120.4\
+\
+\
+Starting listener process CLONEDB ...\
+\
+\
+LSNRCTL for Linux: Version 12.1.0.2.0 - Production on 28-JUL-2022 02:44:06\
+\
+Copyright (c) 1991, 2014, Oracle.  All rights reserved.\
+\
+Starting /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/bin/tnslsnr: please wait...\
+\
+TNSLSNR for Linux: Version 12.1.0.2.0 - Production\
+System parameter file is /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/network/admin/CLONEDB_chcloraebsdb502/listener.ora\
+Log messages written to /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/admin/CLONEDB_chcloraebsdb502/diag/tnslsnr/chcloraebsdb502/clonedb/alert/log.xml\
+Listening on: (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=chcloraebsdb502.karmalab.net)(PORT=1600)))\
+\
+Connecting to (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=chcloraebsdb502.karmalab.net)(PORT=1600)))\
+STATUS of the LISTENER\
+------------------------\
+Alias                     CLONEDB\
+Version                   TNSLSNR for Linux: Version 12.1.0.2.0 - Production\
+Start Date                28-JUL-2022 02:44:06\
+Uptime                    0 days 0 hr. 0 min. 0 sec\
+Trace Level               off\
+Security                  ON: Local OS Authentication\
+SNMP                      OFF\
+Listener Parameter File   /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/network/admin/CLONEDB_chcloraebsdb502/listener.ora\
+Listener Log File         /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/admin/CLONEDB_chcloraebsdb502/diag/tnslsnr/chcloraebsdb502/clonedb/alert/log.xml\
+Listening Endpoints Summary...\
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=chcloraebsdb502.karmalab.net)(PORT=1600)))\
+Services Summary...\
+Service "CLONEDB" has 1 instance(s).\
+  Instance "CLONEDB", status UNKNOWN, has 1 handler(s) for this service...\
+The command completed successfully\
+\
+addlnctl.sh: exiting with status 0\
+\
+addlnctl.sh: check the logfile /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/log/CLONEDB_chcloraebsdb502/addlnctl.txt for more information ...  \
+\
+\
+Running ETCC to check status of DB technology patches... \
+\
+\
+ +===============================================================+ \
+ |    Copyright (c) 2005, 2022 Oracle and/or its affiliates.     | \
+ |                     All rights reserved.                      | \
+ |             Oracle E-Business Suite Release 12.2              | \
+ |          Database EBS Technology Codelevel Checker            | \
+ +===============================================================+ \
+\
+Validating context file: /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/CLONEDB_chcloraebsdb502.xml\
+\
+Using context file from command line argument:\
+/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/CLONEDB_chcloraebsdb502.xml\
+\
+\
+Starting Database EBS Technology Codelevel Checker, Version 120.97 \
+Thu Jul 28 02:44:06 PDT 2022\
+Log file for this session : /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/log/checkDBpatch_180306.log\
+\
+Identifying database release. \
+Database release set to 12.1.0.2.\
+\
+Connecting to database. \
+\
++-----------------------------------------------------------------------------+\
+[WARNING] DB-ETCC: Could not connect to database, so unable to check:\
+  - Whether database is in READ-WRITE mode. \
+  - Existence of table needed to store DB-ETCC results. \
+  - Enablement of database In-Memory option. \
+    If this feature is enabled, additional fixes need to be verified.\
+\
+Resolve the database connectivity issue, and then rerun DB-ETCC.\
++-----------------------------------------------------------------------------+\
+\
+Running on an Engineered System.\
+\
+Bugfix file /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/etcc/db/onprem/txk_R1220_DB_base_bugs.xml : 120.0.12020000.64\
+This file will be used for identifying missing bugfixes. \
+\
+Mapping file /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/etcc/db/onprem/txk_R1220_DB_mappings.xml : 120.0.12020000.39\
+This file will be used for mapping bugfixes to patches.\
+\
+\
+[WARNING] DB-ETCC: Bugfix XML file (/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/etcc/db/onprem/txk_R1220_DB_base_bugs.xml) is more than 90 days old.\
+ Check if a newer version is available in patch 17537119.\
+\
+Checking Bugfix XML file for 12.1.0.2_BP\
+\
+Obtained list of bugfixes to be applied and the list to be rolled back.\
+Now checking Database ORACLE_HOME.\
+\
+The opatch utility is version 12.2.0.1.23.\
+DB-ETCC is compatible with this opatch version.\
+\
+Found patch records in the inventory.\
+\
+Checking Mapping XML file for 12.1.0.2.210119ProactiveBP\
+\
+Patch mapping data is not available for 12.1.0.2.210119ProactiveBP\
+Refer to Doc ID 1594274.1 for the recommended Bundle Patch versions.\
+\
+Some required one-off bugfixes are missing from the Database ORACLE_HOME.\
+The missing bugfixes are:\
+17777718\
+19472320\
+19665139\
+26436717\
+32355765\
+32652143\
+\
+** Refer to MOS Doc ID "1392527.1:Database Patches Required by Oracle E-Business Suite on Oracle Engineered Systems: Exadata Database Machines and SuperClusters" to find the recommended combination of patches.\
+ ** \
+\
+Apply the missing bugfixes and then rerun the script. \
+\
++-----------------------------------------------------------------------------+\
+A consolidated zip file with the required patches for Database release\
+12.1.0.2.210119 ProactiveBP is available on My Oracle Support via:\
+\
+  Patch 33570871 \
+    - EBS RELEASE 12.2 CONSOLIDATED DATABASE FIXES FOR JAN 2022\
+\
+Note: This zip does not include Release Updates, Bundle Patches or Patch Set Updates.\
+\
++-----------------------------------------------------------------------------+\
+[WARNING] 33575286 - DATABASE BUNDLE PATCH 12.1.0.2.220118 is not applied. \
+This is the recommended database bundle patch. You should install it now\
+and then rerun this script to check for any further fixes available.\
+\
+    - Filename: p33575286_121020_Linux-x86-64.zip\
+  \
+Alternatively, you can remain on your existing bundle patch, download the\
+consolidated zip file listed above, and apply all the other missing patches.\
++-----------------------------------------------------------------------------+\
+\
+[WARNING] Database not available. DB-ETCC results cannot be stored.\
+\
+Finished checking fixes for Oracle Database: Thu Jul 28 02:44:22 PDT 2022\
+\
+Log file for this session: /u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin/log/checkDBpatch_180306.log\
+\
+===============================================================================\
+chcloraebsdb502:CLONEDB:/u01/app/oracle/CLONEDB/db/tech_st/12.1.0/appsutil/clone/bin> \
+}

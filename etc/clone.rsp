@@ -1,0 +1,19 @@
+#### Response file
+export startdate=20230122
+export session_type="NEW"
+export recover_time="29-Jul-2022 17:00:00"
+export current_task_id=50
+export restart_task_id=50
+export session_state="RUNNING"
+export log_dir="/u05/oracle/autoclone/instance/CLONEDB/log/20230122"
+
+
+
+#dbhome_bkp_file="ORAPRD1.12.1.0.18.Dec.2021.tar.gz"
+
+apps_bkp_file="EBSapps.ORAPRD.runfs1.03182022.tar.gz"
+runfs=fs1
+patchfs=fs2
+appsrunfsbase="/appltop/app/oracle/ORAMAUI/fs1"
+session_copyapps="COMPLETE"
+#####

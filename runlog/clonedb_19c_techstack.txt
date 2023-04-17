@@ -1,0 +1,346 @@
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> perl adclonectx.pl contextfile=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/GAHPRD_gahprddb01.xml  template=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/template/adxdbctx.tmp
+
+                     Copyright (c) 2011, 2015 Oracle Corporation
+                        Redwood Shores, California, USA
+
+                        Oracle E-Business Suite Rapid Clone
+
+                                 Version 12.2
+
+                      adclonectx Version 120.30.12020000.22
+
+Running: 
+/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jre/bin/java -Xmx600M -Doracle.jdbc.autoCommitSpecCompliant=false -classpath /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jlib/ojdbc8.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jlib/xmlparserv2.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jlib/java: oracle.apps.ad.context.CloneContext  -e /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/GAHPRD_gahprddb01.xml -tmpl /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/template/adxdbctx.tmp
+Enter the APPS password : 
+
+Log file located at /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/CloneContext_1220032523.log
+
+Provide the values required for creation of the new Database Context file.
+
+Target System Hostname (virtual or normal) [chcloraebsdb501] : 
+
+It is recommended that your inputs are validated by the program.
+However you might choose not to validate them under following circumstances:
+
+	-If cloning a context on source system for a remote system.
+	-If cloning a context on a machine where the ports are taken and
+	 you do not want to shutdown the services at this point.
+	-If cloning a context but the database it needs to connect is not available.
+
+Do you want the inputs to be validated (y/n) [n] ? : y
+
+Target System Base Directory : /u01/app/oracle/CLONEDB
+
+Target Instance is RAC (y/n) [y] : n
+
+Target System CDB Name : CLONECDB
+
+Target System PDB Name : CLONEDB
+
+Oracle OS User [oracle] : 
+
+Oracle OS Group [oinstall] : 
+
+Role separation is supported y/n [n] ? : 
+
+Number of DATA_TOP's on the Target System [5] : 
+
+Target System DATA_TOP Directory 1 [/u01/app/oracle/CLONEDB/ONLINELOG] : +DATHCX7/CLONECDB/ONLINELOG
+
+Target System DATA_TOP Directory 2 [/u01/app/oracle/CLONEDB/ONLINELOG] : +DATHCX7/CLONECDB/TEMPFILE 
+
+Target System DATA_TOP Directory 3 [/u01/app/oracle/CLONEDB/TEMPFILE] : +DATHCX7/CLONECDB/TEMPFILE
+
+Target System DATA_TOP Directory 4 [/u01/app/oracle/CLONEDB/DATAFILE] : +DATHCX7/CLONECDB/DATAFILE
+
+Target System DATA_TOP Directory 5 [/u01/app/oracle/CLONEDB/DATAFILE] : +DATHCX7/CLONECDB/DATAFILE
+
+Specify value for OSBACKUPDBA group [oinstall] : 
+
+Specify value for OSDGDBA group [oinstall] : 
+
+Specify value for OSKMDBA group [oinstall] : 
+
+Specify value for OSRACDBA group [oinstall] : 
+
+Target System RDBMS ORACLE_HOME Directory [/u01/app/oracle/CLONEDB/19.0.0] : /u01/app/oracle/CLONEDB/db/tech_st/19.3
+
+Do you want to preserve the Display [localhost:10.0] (y/n)  : n
+
+Target System Display [chcloraebsdb501:0.0] : 
+
+Do you want the target system to have the same port values as the source system (y/n) [y] ? : n
+
+Target System Port Pool [0-99] : 79
+
+Checking the port pool 79
+done: Port Pool 79 is free
+Report file located at /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/temp/portpool.lst
+The new database context file has been created :
+  /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml
+contextfile=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml
+Check Clone Context logfile /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/CloneContext_1220032523.log for details.
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> cp /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml /u01/app/oracle/CLONEDB/db/tech_st/19.3/CLONEDB_chcloraebsdb501.xml.1
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> 
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> 
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> perl adcfgclone.pl dbTechStack /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml
+
+                     Copyright (c) 2002, 2015 Oracle Corporation
+                        Redwood Shores, California, USA
+
+                        Oracle E-Business Suite Rapid Clone
+
+                                 Version 12.2
+
+                      adcfgclone Version 120.63.12020000.65
+
+Enter the APPS password : 
+
+
+Running Rapid Clone with command:
+
+Running:
+perl /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/adclone.pl java=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jre mode=apply stage=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone component=dbTechStack method=CUSTOM dbctxtg=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml showProgress contextValidated=false
+
+
+Beginning rdbms home Apply - Tue Dec 20 03:30:55 2022
+
+/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/../jre/bin/java -Xmx600M -Doracle.jdbc.autoCommitSpecCompliant=false -DCONTEXT_VALIDATED=false -Doracle.installer.oui_loc=/u01/app/oracle/CLONEDB/db/tech_st/19.3/oui -classpath /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/xmlparserv2.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/ojdbc8.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/java:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/oui/OraInstaller.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/oui/ewt3.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/oui/share.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/oui/srvm.jar:/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/jlib/ojmisc.jar   oracle.apps.ad.clone.ApplyDBTechStack -e /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml -stage /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone   -showProgress
+APPS Password : Log file located at /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/log/CLONEDB_chcloraebsdb501/ApplyDBTechStack_12200330.log
+  |      0% completed       
+Log file located at /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/log/CLONEDB_chcloraebsdb501/ApplyDBTechStack_12200330.log
+  \      0% completed       
+
+Completed Apply...
+Tue Dec 20 03:33:30 2022
+
+Running ETCC to check status of DB technology patches... 
+
+
+ +===============================================================+ 
+ |    Copyright (c) 2005, 2022 Oracle and/or its affiliates.     | 
+ |                     All rights reserved.                      | 
+ |             Oracle E-Business Suite Release 12.2              | 
+ |          Database EBS Technology Codelevel Checker            | 
+ +===============================================================+ 
+
+Validating context file: /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml
+
+Using context file from command line argument:
+/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/CLONEDB_chcloraebsdb501.xml
+
+
+Starting Database EBS Technology Codelevel Checker, Version 120.101 
+Tue Dec 20 03:33:30 PST 2022
+Log file for this session : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/log/checkDBpatch_20296.log
+
+Identifying database release. 
+Database release set to 19.15.0.0.
+
+Running on an Engineered System.
+
+NOTE: This is a Real Application Cluster (RAC) database.
+   - run this tool on all RAC nodes. 
+
+Multitenant identified.
+ - Container database (CDB) identified via s_cdb_name is CLONECDB
+ - Pluggable database (PDB) identified via s_pdb_name is CLONEDB
+
+Connecting to database. 
+
++-----------------------------------------------------------------------------+
+[WARNING] DB-ETCC: Could not connect to database, so unable to check:
+  - Whether database is in READ-WRITE mode. 
+  - Existence of table needed to store DB-ETCC results. 
+  - Enablement of database In-Memory option. 
+    If this feature is enabled, additional fixes need to be verified.
+
+Resolve the database connectivity issue, and then rerun DB-ETCC.
++-----------------------------------------------------------------------------+
+
+Bugfix file /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/etcc/db/onprem/txk_R1220_DB_base_bugs.xml : 120.0.12020000.66
+This file will be used for identifying missing bugfixes. 
+
+Mapping file /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/etcc/db/onprem/txk_R1220_DB_mappings.xml : 120.0.12020000.42
+This file will be used for mapping bugfixes to patches.
+
+
+[WARNING] DB-ETCC: Bugfix XML file (/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/etcc/db/onprem/txk_R1220_DB_base_bugs.xml) is more than 90 days old.
+ 
++-----------------------------------------------------------------------------+
+   Always use the latest version of ETCC available in patch 17537119, as new 
+   bugfixes will not be checked by older versions of the utility. 
++-----------------------------------------------------------------------------+
+
+
+Checking Bugfix XML file for 19.15.0.0_RU
+
+Obtained list of bugfixes to be applied and the list to be rolled back.
+Now checking Database ORACLE_HOME.
+
+The opatch utility is version 12.2.0.1.32.
+DB-ETCC is compatible with this opatch version.
+
+Found patch records in the inventory.
+
+Checking Mapping XML file for 19.15.0.0.220419DBRU
+
+All the required one-off bugfixes are present in Database ORACLE_HOME.
+
+[WARNING] Database not available. DB-ETCC results cannot be stored.
+
+Finished checking fixes for Oracle Database: Tue Dec 20 03:33:46 PST 2022
+
+Log file for this session: /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin/log/checkDBpatch_20296.log
+
+===============================================================================
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/clone/bin> 
+
+
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil> source ./txkSetCfgCDB.env -dboraclehome=/u01/app/oracle/CLONEDB/db/tech_st/19.3
+
+Oracle Home being passed: /u01/app/oracle/CLONEDB/db/tech_st/19.3
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil> cd bin
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/bin> perl txkGenCDBTnsAdmin.pl -dboraclehome /u01/app/oracle/CLONEDB/db/tech_st/19.3 -cdbname=CLONECDB -cdbsid=CLONECDB -dbport=1600 -outdir=/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil
+Enter the full path of Database Oracle Home: /u01/app/oracle/CLONEDB/db/tech_st/19.3
+
+
+Script Name    : txkGenCDBTnsAdmin.pl
+Script Version : 120.0.12020000.9
+Started        : Tue Dec 20 04:28:40 PST 2022
+
+Log File       : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/txkGenCDBTnsAdmin.log
+
+
+-----------
+Values used
+-----------
+Database Oracle Home    : /u01/app/oracle/CLONEDB/db/tech_st/19.3
+CDB NAME                : CLONECDB
+CDB SID                 : CLONECDB
+Database port           : 1600
+OUT Directory           : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil
+Is RAC?                 : No
+Virtual Hostname        : 
+
+
+
+
+=========================
+Validating oracle home...
+=========================
+Oracle Home: /u01/app/oracle/CLONEDB/db/tech_st/19.3 exists.
+
+
+===========================
+Validating out directory...
+===========================
+Out directory: /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil exists.
+
+
+============================
+Inside getDBHostDetails()...
+============================
+DB Hostname : chcloraebsdb501
+DB Domain   : karmalab.net
+
+
+=====================
+Inside getDBPort()...
+=====================
+DB Port passed as an argument, using the same.
+DB Port: 1600
+
+
+======================================
+Inside generateCDBTNSAdminContent()...
+======================================
+Creating the directory: /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_bkp
+Creating the directory: /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp
+listener_template: listener_ora_cdb_db19.tmp
+sqlnet_template: sqlnet_ora_cdb_db19.tmp
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/template/listener_ora_cdb_db19.tmp
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/listener.ora
+
+
+===================================
+Inside replaceContextVariables()...
+===================================
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/listener.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_bkp/listener.ora
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/listener.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/listener.ora
+
+
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/template/tnsnames_ora_cdb_db121.tmp
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/tnsnames.ora
+
+
+===================================
+Inside replaceContextVariables()...
+===================================
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/tnsnames.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_bkp/tnsnames.ora
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/tnsnames.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/tnsnames.ora
+
+
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/template/sqlnet_ora_cdb_db19.tmp
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/sqlnet.ora
+
+
+===================================
+Inside replaceContextVariables()...
+===================================
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/sqlnet.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_bkp/sqlnet.ora
+
+
+Copying the file
+----------------
+SOURCE : /u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/TXK_CDB_TNS_ADMIN_Tue_Dec_20_04_28_30_2022/tns_admin_cdb_temp/sqlnet.ora
+TARGET : /u01/app/oracle/CLONEDB/db/tech_st/19.3/network/admin/sqlnet.ora
+
+
+
+
+==============================
+Inside updateCDBSqlNetOra()...
+==============================
+Updating the IFILE entry...
+
+
+
+
+
+Exiting from the script.
+Ended: Tue Dec 20 04:28:40 PST 2022
+
+
+chcloraebsdb501::/u01/app/oracle/CLONEDB/db/tech_st/19.3/appsutil/bin> 	
