@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -n
 #******************************************************************************************************
 # 	$Header 1.2 2022/07/29 dikumar $
 #  Purpose  : Script to Check and restore instance from specified date.
@@ -231,15 +231,16 @@ elif [[ "${current_task_id}" -ge 50 ]] && [[ "${current_task_id}" -le 600 ]] ; t
     #  Submit application extract over ssh
     #******************************************************************************************************##
     if [[ -z "${trgappsosuser}" ]] || [[ -z "${trgapphost}" ]] || [[ -z "${labdomain}" ]] || [[ -z "${trgappname}" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: All the required values are not set. Make sure property file is sourced. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: All the required values are not set. Make sure property file is sourced. Exiting !!"
       exit 1
     fi
 
     if [[ -f "${inst_bin}/${trgappname,,}app.sh" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:PREPARE APP: Submitting Application prepare job in nohup at ${trgadminapphost}. "
-      ssh -q "${trgappsosuser}"@"${trgapphost}"."${labdomain}" " nohup sh ${inst_bin}/${trgappname,,}app.sh   & "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:REMOTE Operation Execution at ${trgadminapphost}. "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:PREPARE APP: Submitting Application prepare job in nohup at ${trgadminapphost}. "
+      ssh -q "${trgappsosuser}"@"${trgapphost}"."${labdomain}" " nohup sh ${inst_bin}/${trgappname,,}app.sh  2>&1  & "
     else
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:PREPARE APP: Application clone script is not available. Cannot proceed. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:PREPARE APP: Application clone script is not available. Cannot proceed. Exiting !!"
       exit 1
     fi
     #******************************************************************************************************##
@@ -250,13 +251,13 @@ elif [[ "${current_task_id}" -ge 50 ]] && [[ "${current_task_id}" -le 600 ]] ; t
       do
       source "${clonerspfile}" > /dev/null 2>&1
       if [[ "${session_state}" == "FAILED" ]]; then
-        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:PREPARE APP: Application prepare stage is stopped with error!!"
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:PREPARE APP: Application prepare stage is stopped with error!!"
         exit 1
       elif [[ "${current_task_id}" -ge 600 ]]; then
-        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:PREPARE APP: Extraction stage is completed."
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:PREPARE APP: Extraction stage is completed."
         break
       fi
-      sleep 20
+      #sleep 20m
       #echo -e  "Waiting in the loop"
       #mailstatus
       done
@@ -268,22 +269,22 @@ fi
   #******************************************************************************************************##
   source "${clonerspfile}" > /dev/null 2>&1
 if [[ "${db_stage}" == "COMPLETED" ]]; then
-  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:DB STAGE: Database restore and postclone stage is already completed. Moving on."
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB STAGE: Database restore and postclone stage is already completed. Moving on."
     update_clonersp "current_task_id" 3000
     update_clonersp "current_module_task" 3000
     source "${clonerspfile}" >/dev/null 2>&1
 else
   if [[ "${current_task_id}" -ge 1000 ]]  && [[ "${current_task_id}" -le 1800  ]] ; then
     if [[ -z "${trgdbosuser}" ]] || [[ -z "${trgdbhost}" ]] || [[ -z "${labdomain}" ]] || [[ -z "${trgdbname}" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: All the required values are not set. Make sure property file is sourced. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: All the required values are not set. Make sure property file is sourced. Exiting !!"
       exit 1
     fi
 
     if [[ -f "${inst_bin}/${trgdbname,,}db.sh" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:DB STAGE: Submitting Database prepare and restore job in nohup at ${trgdbhost}. "
-      ssh -q "${trgdbosuser}"@"${trgdbhost}"."${labdomain}" " nohup sh ${inst_bin}/${trgdbname,,}db.sh  ${workappspass}   & "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB STAGE: Submitting Database prepare and restore job in nohup at ${trgdbhost}. "
+      ssh -q "${trgdbosuser}"@"${trgdbsshhost}"."${labdomain}" " nohup sh ${inst_bin}/${trgdbname,,}db.sh   2>&1 & "
     else
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:DB STAGE: Database clone script is not available. Cannot proceed. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB STAGE: Database clone script is not available. Cannot proceed. Exiting !!"
       exit 1
     fi
   #******************************************************************************************************##
@@ -294,13 +295,13 @@ else
    do
     source "${clonerspfile}" > /dev/null 2>&1
     if [[ "${session_state}" == "FAILED" ]]; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:DB STAGE: Database configuration stage is stopped with errors!! Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB STAGE: Database configuration stage is stopped with errors!! Exiting !!"
       exit 1
     elif [[ "${current_task_id}" == "1800" ]]; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:DB STAGE: Database configuration stage is completed."
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB STAGE: Database configuration stage is completed."
       break
     fi
-  sleep 20
+  #sleep 20
   #echo -e  "Waiting in the loop"
   #mailstatus
   done
@@ -308,38 +309,39 @@ else
 fi
 
    update_clonersp "db_stage" "\"COMPLETED\""
-exit 0
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: Exiting after completing Database configuration."
+#exit 0
   #******************************************************************************************************##
   # Restore and Configure Application tier
   #******************************************************************************************************#
 
 if [[ "${configapp_stage}" == "COMPLETED" ]]; then
-  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: CONFIG Application for restore stage is already completed. Moving on."
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: CONFIG Application for restore stage is already completed. Moving on."
 else
   if [[ "${current_task_id}" -ge 4000 ]] ; then
     #******************************************************************************************************##
     #  Submit application extract over ssh
     #******************************************************************************************************##
     if [[ -z "${trgappsosuser}" ]] || [[ -z "${trgapphost}" ]] || [[ -z "${labdomain}" ]] || [[ -z "${trgappname}" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: All the required values are not set. Make sure property file is sourced. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: All the required values are not set. Make sure property file is sourced. Exiting !!"
       exit 1
     fi
 
     if [[ -z "${workappspass}" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: ERROR: Source Environment apps password is not loaded.\n"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: ERROR: Source Environment apps password is not loaded.\n"
       exit 1
     fi
 
     if [[ -z "${workwlspass}" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: ERROR: Source Environment weblogic password is not loaded.\n"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: ERROR: Source Environment weblogic password is not loaded.\n"
       exit 1
     fi
 
     if [[ -f "${inst_bin}/${trgappname,,}app.sh" ]] ; then
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: Submitting Application configure job in nohup at ${trgadminapphost}. "
-      ssh -q "${trgappsosuser}"@"${trgapphost}"."${labdomain}" " nohup sh ${inst_bin}/${trgappname,,}app.sh  ${workappspass}  ${workwlspass}  & "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: Submitting Application configure job in nohup at ${trgadminapphost}. "
+      ssh -q "${trgappsosuser}"@"${trgapphost}"."${labdomain}" " nohup sh ${inst_bin}/${trgappname,,}app.sh   2>&1  & "
     else
-      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: Application clone script is not available. Cannot proceed. Exiting !!"
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: Application clone script is not available. Cannot proceed. Exiting !!"
       exit 1
     fi
 
@@ -351,14 +353,14 @@ else
       do
       source "${clonerspfile}" > /dev/null 2>&1
       if [[ "${session_state}" == "FAILED" ]]; then
-        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: Application Configure stage is stopped with error!!"
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: Application Configure stage is stopped with error!!"
         exit 1
       elif [[ "${current_task_id}" -ge 5000 ]]; then
-        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CONFIG APP: Extraction stage is completed."
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:CONFIG APP: Extraction stage is completed."
         break
       fi
-      sleep 5
-      echo -e  "Waiting in the loop"
+      #sleep 5
+      #echo -e  "Waiting in the loop"
       #mailstatus
       done
   fi
@@ -366,13 +368,13 @@ fi
 
   update_clonersp "configapp_stage" "COMPLETED"
 
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED:  >>>>>>> ${trgname} clone is Completed. <<<<<<< " | tee -a  "${mainlog}"
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
-echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CLONE COMPLETED: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL:  >>>>>>> ${trgname} clone is Completed. <<<<<<< " | tee -a  "${mainlog}"
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: CONTROL: "
 echo -e "\n\n\n\n"
 
 exit 0
