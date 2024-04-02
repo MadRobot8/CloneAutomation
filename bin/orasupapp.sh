@@ -13,6 +13,16 @@
 #
 #******************************************************************************************************#
 
+#*******************************************************************************************************
+#   How to set it up :
+# 1. Change dbupper value.
+# 2. Post adcfgclone steps are different for ORAPRD and GAHPRD systems
+# 3. Context file path in EBSapps/comn is different
+#    GAHPRD: 12.9: _pcontextf="${apptargetbasepath}/${runfs}/EBSapps/comn/adopclone_${srcapphostcname}/context/apps/${srcadminctxname}".xml
+#    ORAPRD: 12.2: _pcontextf="${apptargetbasepath}"/"${runfs}"/EBSapps/comn/clone/context/apps/${srcadminctxname}".xml
+#
+#******************************************************************************************************#
+echo -e "\n\n\n\n"
 #******************************************************************************************************##
 #
 #  ********** A P P L I C A T I O N - I N S T A N C E - R E S T O R E - W R A P P E R - S C R I P T **********
@@ -28,20 +38,45 @@ export dbupper="ORASUP"
 export dblower="${dbupper,,}"
 export HOST_NAME=$(uname -n | cut -f1 -d".")
 
+cleanup()
+{
+  rm -f "/tmp/${dblower,,}app.lck" > /dev/null 2>&1
+}
+
+#trap 'cleanup ${LINENO}'  EXIT
+trap cleanup  EXIT
 #******************************************************************************************************##
 #	Local variable declaration.
 #******************************************************************************************************##
 export scr_home=/u05/oracle/autoclone
-# Setup oem node log dir for oem node local logs
-if [[ ! -d  "${scr_home}/instance/${dbupper}/lock" ]] ; then
-  mkdir -p "${scr_home}"/instance/"${dbupper}"/lock > /dev/null 2>&1
+
+
+export notification_to="dikumar@expediagroup.com"
+export notification_from="clonemailer@expedia.com"
+sleep 2
+
+sleep 1
+if [[ -f "/tmp/${dblower,,}app.lck" ]]; then
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Lock file exists for database script, another session is still running.\n\n"
+  exit 1
 fi
 
-export lock_dir="${scr_home}/instance/${dbupper}/lock"
-sleep 1
-if [ -f "${lock_dir}"/"${dblower}"app.lck ]; then
-  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Lock file exists for application script, another session is still running.\n\n"
-  exit 1
+
+another_instance()
+{
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Another session is in progress. Exiting !!\n\n"
+    echo -e "${dbupper}: Current session is terminated. There is an ongoing session still running. Please review " | mailx -r "${notification_from}" -s "${dbupper}: Another clone session is in progress. Exiting!!" "${notification_to}"
+    exit 1
+}
+
+
+#scriptname=$(basename "$( readlink -f "${0}" )")
+script_name=$(basename "$0")
+# Checking if another instance of script is already running
+if [[ $(pgrep -f  "${script_name}"  ) != $$ ]]; then
+     another_instance
+else
+  echo $$ > "/tmp/${dblower,,}app.lck" 2>&1
 fi
 
 #******************************************************************************************************##
@@ -82,9 +117,53 @@ update_clonersp()
 #******************************************************************************************************##
 ## Application functions
 #******************************************************************************************************##
+
+app_spin()
+{
+
+envfile="${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+if [ ! -f ${envfile} ];  then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Target Environment instance.properties file not found on application server.\n"
+    exit 1;
+else
+    source "${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+    sleep 1
+fi
+unset envfile
+
+envfile="${clonerspfile}"
+if [[ ! -f "${envfile}" ]];  then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: clone.rsp file is not available on application node. Exiting!!\n"
+    exit 1;
+else
+    source "${clonerspfile}"
+    sleep 1
+fi
+unset envfile
+
+if [[ -z "${control_owner}" ]]; then
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:SPIN: Control owner is not set, no script will be executed. Exiting !!"
+  exit 1
+fi
+
+#echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL:DB WAIT: Waiting for db steps to completed. "
+# The script will spin and wait to change the control_owner and proceed after control_owner is either app or shared
+while :
+do
+    source "${clonerspfile}" > /dev/null 2>&1
+    if [[ ${control_owner} == "shared" ]] || [[ ${control_owner} == "app" ]] ; then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: Control is with application child script, database script will wait. "
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:CONTROL: "
+      break
+    fi
+  sleep 23
+done
+}
+
 check_connect()
 {
-source /home/$(whoami)/."${trgappname,,}"_profile >/dev/null 2>&1
+source "/home/$(whoami)/.${trgappname,,}"_profile >/dev/null 2>&1
 
 export APPSUSER=$(/dba/bin/getpass "${trgappname^^}" apps)
 export APPSCONNECTSTR="${APPSUSER}"@"${trgappname}"
@@ -103,7 +182,6 @@ else
   return 0
 fi
 }
-
 
 # Check for both CDB and PDB status
 check_dbstatus()
@@ -145,6 +223,77 @@ esac
 rm -f /tmp/pdbstatus${dbupper^^}.tmp >/dev/null 2>&1
 }
 
+	# Load up all passwords needed from getpass
+load_getpass_password()
+	{
+	dbupper="${trgappname^^}"
+
+	#Load Target passwords
+	export SYSTUSER=$(/dba/bin/getpass "${dbupper}" system)
+	#echo ${SYSTUSER}
+	export SYSTPASS=$(echo $SYSTUSER | cut -d/ -f 2)
+	export APPSUSER=$(/dba/bin/getpass ${dbupper} apps)
+	export APPSPASS=$(echo $APPSUSER | cut -d/ -f 2)
+	#echo ${APPSUSER}
+	export EXPDUSER=$(/dba/bin/getpass ${dbupper} xxexpd)
+	export EXPDPASS=$(echo $EXPDUSER | cut -d/ -f 2)
+	export OALLUSER=$(/dba/bin/getpass ${dbupper} alloracle)
+	export OALLPASS=$(echo $OALLUSER | cut -d/ -f 2)
+	export SYSADUSER=$(/dba/bin/getpass ${dbupper} sysadmin)
+	export SYSADPASS=$(echo $SYSADUSER | cut -d/ -f 2)
+	export WLSUSER=$(/dba/bin/getpass ${dbupper} weblogic )
+	export WLSPASS=$(echo $WLSUSER | cut -d/ -f 2)
+	export VSAPPREADUSER=$(/dba/bin/getpass ${dbupper} sappreaduser  )
+	export VSAPPREADPASS=$(echo $VSAPPREADUSER | cut -d/ -f 2)
+	export VSAPPWRITEUSER=$(/dba/bin/getpass ${dbupper} sappwriteuser  )
+	export VSAPPWRITEPASS=$(echo $VSAPPWRITEUSER | cut -d/ -f 2 )
+
+	}
+
+	# Password validate function ######
+	chk_apps_password()
+	{
+	unpw="apps/${1}@${2}"
+sqlplus -s -L  /nolog > /dev/null 2>&1 <<EOF
+whenever sqlerror exit 1
+whenever oserror exit 1
+connect ${unpw}
+exit
+EOF
+
+	if [[ $? -ne 0 ]]; then
+		return 1
+	else
+	  return 0
+	fi
+	}
+
+	# Validate which APPS password is working - Source or Target
+	validate_working_apps_password()
+	{
+	#echo -e "checking  ${SRCAPPSPASS} for validation."
+	chk_apps_password "${SRCAPPSPASS}" "${trgappname^^}"
+	_chkTpassRC1=$?
+	sleep 1
+	chk_apps_password "${APPSPASS}" "${trgappname^^}"
+	_chkTpassRC2=$?
+	sleep 1
+	if [[ "${_chkTpassRC1}" -eq 0 ]]; then
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:   " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK: *******  Source APPS Password is working  ******* " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:   " | tee -a  "${mainlog}"
+		workappspass="${SRCAPPSPASS}"
+	elif [[ "${_chkTpassRC2}" -eq 0 ]]; then
+    workappspass="${APPSPASS}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:   " | tee -a  "${mainlog}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:  *******  Target APPS Password is working  ******* " | tee -a  "${mainlog}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:   " | tee -a  "${mainlog}"
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHECK:   ERROR: Source and Target - Both APPS passwords are not working. Exiting !" | tee -a  "${mainlog}"
+		exit 1
+	fi
+	}
+
 create_extract_dir()
 {
   mkdir  -p  "${currentextractdir}"/app_fnd_user  > /dev/null 2>&1
@@ -185,11 +334,6 @@ extract_lookup_users()
 if [[ "${pdbstatus}" == "OPEN" ]]  && [[ -z "${appsqlextract}"  ]] ; then
 
 sqlplus  -s  "${APPSUSER}"@"${trgappname}"  << EOF > /dev/null
-set head off
-set feed off
-set line 999
-
-spool ${currentextractdir}/app_fnd_lookup/app_extract_fndlookup.sh
 set head off
 set feed off
 set line 999
@@ -342,7 +486,9 @@ stop_application()
     { echo "apps" ; echo "${APPSPASS}" ; echo "${WLSPASS}" ; } | "${ADMIN_SCRIPTS_HOME}"/adstpall.sh  -nodbchk >  "${log_dir}"/stopApplication"${trgappname^^}"."${startdate}" 2>&1
     fi
     echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:STOP APP: Application services are stopped at   ${HOST_NAME}" | tee -a "${mainlog}" "${log_dir}"/stopApplication"${trgappname^^}"."${startdate}"
-
+    pkill -9 reviver.sh  > /dev/null 2>&1
+    pkill -9 FND  > /dev/null 2>&1
+    pkill -9 FNDLIBR  > /dev/null 2>&1
     update_clonersp "appstopservice" "COMPLETED"
   else
       echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:STOP APP: Application service step is skipped. " | tee -a "${mainlog}" "${appextractlog}"
@@ -387,159 +533,1072 @@ else
 fi
 }
 
+	# restore/untar mentioned tar file in the given runfs.
 restore_apps_tier()
-{
+	{
+	  envfile="${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+    if [[ ! -f ${envfile} ]];  then
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Target Environment instance.properties file not found on application server.\n"
+        exit 1;
+    else
+        source "${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+        sleep 1
+    fi
+    unset envfile
 
-  #******************************************************************************************************#
-  # Validate backup location and backup file to be restored.
-  #******************************************************************************************************#
- source "${clonerspfile}" > /dev/null 2>&1
-if [[ "${appscopy_stage}" == "COMPLETED" ]]; then
-  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: APP COPY stage is already completed. Moving on."
-elif   [[ "${current_task_id}" == 3000 ]] ; then
-  if [[ -n "${appbkpfilefullpath}" ]]; then
-	  appbkpfile=$(cat "${appsourcebkupdir}"/runfs.latest)
-	  appbkpfilefullpath="${appsourcebkupdir}"/"${appbkpfile}"
-	  if [[ ! -f "${appbkpfilefullpath}" ]]; then
-	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: ERROR: Application backup for ${srcappname} not found. Please check.EXITING!!"
-		  exit 1;
-	  else
-	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Application backup for ${srcappname} found."
-	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: File name: ${appbkpfilefullpath}. "
-		  sleep 2
-	  fi
-	fi
-
-  update_clonersp "appbkpfilefullpath" "${appbkpfilefullpath}"
   source "${clonerspfile}" > /dev/null 2>&1
-	# Determine run fs from backup file
-	if [[ -n "${runfs}" ]] || [[ -n "${patchfs}" ]] ; then
-	  if [[ "${appbkpfile}" == *"fs1"* ]]; then
-			export runfs=fs1
-			export patchfs=fs2
-			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Run fs is set to ${runfs}.  "
-	  elif [[ "${appbkpfile}" == *"fs2"* ]]; then
-			export runfs=fs2
-			export patchfs=fs1
-			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Run fs is set to ${runfs}.  "
+  if [[ -d "${targetrunfs}" ]] ; then
+    cd "${targetrunfs}"
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Could not enter into ${targetrunfs}. Exiting !! "
+    exit 1
+  fi
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Decompressing backup file. Time : 15-20mins" | tee -a  "${mainlog}"
+	tar -xzvf "${appbkpfilefullpath}" >> "${log_dir}"/untar_appsbkp"${trgappname}"."${startdate}"
+
+	if [[  -d "${targetrunfs}"/EBSapps ]] ; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Application tier backup file decompress completed." | tee -a  "${mainlog}"
+    echo "${apps_bkp_file}" > "${apptargetbasepath}"/"${runfs}"/EBSapps/restore.complete
+  else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Tar file  could not create EBSapps. Exiting !!" | tee -a  "${mainlog}"
+	  echo "${apps_bkp_file}" > "${targetrunfs}"/EBSapps/restore.failed
+	  update_clonersp "apprestorestage" "COMPLETED"
+    source "${clonerspfile}" > /dev/null 2>&1
+		exit 1
+	fi
+	}
+
+	#Validate and cleanup old stack
+	cleanup_and_restore_apps()
+	{
+  envfile="${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+  if [[ ! -f ${envfile} ]];  then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Target Environment instance.properties file not found on application server.\n"
+      exit 1;
+  else
+      source "${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+      sleep 1
+  fi
+  unset envfile
+
+  source "${clonerspfile}" > /dev/null 2>&1
+  if [[ "${apprestorestage}" == "COMPLETED" ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Application tier backup file is already restored. No need to restore backup." | tee -a  "${mainlog}"
+    if [[ "${appadcfgclonestage}" == "COMPLETED" ]]; then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: Application tier adcfgclone is already completed. Moving on .. " | tee -a  "${mainlog}"
+      return 0
+    else
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Running cleanup for old directories." | tee -a  "${mainlog}"
+      # Detach Oracle homes from Inventory.
+
+      detach_oh
+      if [[ -d "${apptargetbasepath}/${patchfs}/EBSapps" ]] ; then
+        rm -rf "${apptargetbasepath}/${patchfs}/EBSapps" 2>/dev/null
+      fi
+
+      if [[ -d "${apptargetbasepath}/${patchfs}/FMW_Home" ]] ; then
+        rm -rf "${apptargetbasepath}/${patchfs}/FMW_Home" 2>/dev/null
+      fi
+
+      if [[ -d "${apptargetbasepath}/${runfs}/FMW_Home" ]] ; then
+        rm -rf "${apptargetbasepath}/${runfs}/FMW_Home" 2>/dev/null
+      fi
+
+      sleep 2
+    fi
+  else
+		# Detach Oracle homes from Inventory.
+		detach_oh
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Running cleanup for old directories from old session." | tee -a  "${mainlog}"
+      if [[ -d "${apptargetbasepath}/${patchfs}/EBSapps" ]] ; then
+        rm -rf "${apptargetbasepath}/${patchfs}/EBSapps" 2>/dev/null
+      fi
+
+      if [[ -d "${apptargetbasepath}/${patchfs}/FMW_Home" ]] ; then
+        rm -rf "${apptargetbasepath}/${patchfs}/FMW_Home" 2>/dev/null
+      fi
+
+      if [[ -d "${apptargetbasepath}/${runfs}/FMW_Home" ]] ; then
+        rm -rf "${apptargetbasepath}/${runfs}/FMW_Home" 2>/dev/null
+      fi
+
+      if [[ -d "${apptargetbasepath}/${runfs}/EBSapps"  ]] ; then
+        rm -rf "${apptargetbasepath}/${runfs}/EBSapps" 2>/dev/null
+      fi
+
+		# Restore apps tier backup
+		restore_apps_tier
+  fi
+
+	update_clonersp "apprestorestage" "COMPLETED"
+  source "${clonerspfile}" > /dev/null 2>&1
+	}
+
+
+	# Pre-checks before executing adcfgclone
+	validate_pre_adcfgclone()
+	{
+    envfile="${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+    if [[ ! -f ${envfile} ]];  then
+        echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Target Environment instance.properties file not found on application server.\n"
+        exit 1;
+    else
+        source "${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+        sleep 1
+    fi
+    unset envfile
+
+  if [[ "${appadcfgclonestage}" == "COMPLETED" ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATION: Application tier adcfgclone is already completed. Moving on .. " | tee -a  "${mainlog}"
+  else
+	  # Restored File system fs and edition validation
+	  #    GAHPRD: 12.9: _pcontextf="${apptargetbasepath}/${runfs}/EBSapps/comn/adopclone_${srcapphostcname}/context/apps/${srcadminctxname}".xml
+    #    ORAPRD: 12.2: _pcontextf="${apptargetbasepath}"/"${runfs}"/EBSapps/comn/clone/context/apps/${srcadminctxname}".xml
+	  #_pcontextf="${apptargetbasepath}/${runfs}/EBSapps/comn/adopclone_${srcapphostcname}/context/apps/${srcadminctxname}".xml
+	  _pcontextf="${apptargetbasepath}/${runfs}/EBSapps/comn/clone/context/apps/${srcadminctxname}".xml
+	  _chkfs=$(grep "file_edition_name" "${_pcontextf}")
+	  _chked=$(grep "file_edition_type" "${_pcontextf}")
+
+    if echo "${_chkfs}" | grep -q "${runfs}" ; then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: Validated fs is ${runfs}. " | tee -a  "${mainlog}"
 	  else
-	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: ERROR: Run fs could not be identified. Backup file will not be restored. Exiting!!\n.  "
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: ERROR: Restore Backup File system validation failed. Restored backup is not from RUN fs. Please validate. EXITING !!. " | tee -a  "${mainlog}"
 		  exit 1
 	  fi
+
+    if echo "${_chked}" | grep -q "run"; then
+       echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: Supplied fs for run edition is ${runfs}. " | tee -a  "${mainlog}"
+	  else
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: ERROR: Restore Backup File system validation failed. Restored backup is not from RUN edition. Please validate. EXITING !!. " | tee -a  "${mainlog}"
+		  exit 1
+	  fi
+
+	  # Validating txkWfClone.sh file exists and it have exit 0 added in first 2 lines to avoid long running adcfgclone.pl
+	  _FILE1="${apptargetbasepath}/${runfs}/EBSapps/appl/fnd/12.0.0/admin/template/txkWfClone.sh"
+	  if [[ -f "${_FILE1}" ]] ; then
+		  sed -i '2 i exit 0 \n'  "${_FILE1}"
+	  else
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: Warning: txkWfClone.sh file not found. Please review " | tee -a  "${mainlog}"
+		  exit 1
+	  fi
+	  unset _FILE1
+
+		# Validating pairs file and adcfgclone
+  	unset apppairsfile
+  	unset appadcfgclonefile
+  	apppairsfile="${inst_etc}"/"${trgappname}"_"${trgadminapphost}"_"${runfs}".txt
+  	appadcfgclonefile="${apptargetbasepath}/${runfs}/EBSapps/comn/clone/bin/adcfgclone.pl"
+  	if [[ -f "${apppairsfile}" ]] && [[ -f "${appadcfgclonefile}" ]] ; then
+  	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: ${runfs} Pairs file found. Proceeding further.. " | tee -a  "${mainlog}"
+  		sleep 2
+  	elif [[ ! -f "${apppairsfile}" ]]; then
+  		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PAIRS VALIDATE: ${runfs} Pairs file not found. Application configuration cannot proceed. exiting !! " | tee -a  "${mainlog}"
+  		exit 1
+  	elif [[ ! -f "${appadcfgclonefile}" ]]; then
+  		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP BKP VALIDATE: adcfgclone file not found. Application configuration cannot proceed. exiting !!. " | tee -a  "${mainlog}"
+  		exit 1
+  	fi
+
+	  update_clonersp "apppairsfile" "${apppairsfile}"
+	  update_clonersp "appadcfgclonefile" "${appadcfgclonefile}"
+    source "${clonerspfile}" > /dev/null 2>&1
+	fi
+	}
+
+#execute autoconfig
+run_autoconfig()
+	{
+	  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+      source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+    else
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+      update_clonersp "session_state" "FAILED"
+      exit 1
+    fi
+  source "${clonerspfile}" > /dev/null 2>&1
+  source /dba/etc/.egebs
+  export SRCAPPSPASS="${srcappspass}"
+
+  if [[ -z "${SRCAPPSPASS}" ]] ; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Source Environment apps password is not loaded for autoconfig\n"
+    exit 1
+  fi
+
+	#Load Target passwords
+	load_getpass_password
+	#Validate working apps password, this will also validate connectivity.
+	validate_working_apps_password
+
+	#To keep track of autoconfig runs.
+	autoconfigcnt=$((autoconfigcnt+1))
+	sed -i '/connection/d' "${EBS_DOMAIN_HOME}"/config/config.xml
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: Running autoconfig....  Execution count ${autoconfigcnt}. " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: Logfile ${log_dir}/run_appautoconfig${autoconfigcnt}.${startdate}" | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: " | tee -a  "${mainlog}"
+
+	sh "${ADMIN_SCRIPTS_HOME}"/adautocfg.sh  appspass="${workappspass}"  > "${log_dir}"/run_appautoconfig"${autoconfigcnt}"."${startdate}"
+	rcode=$?
+	if (( rcode > 0 )); then
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: ERROR: autoconfig failed on application host ${HOST_NAME}. EXITING !!" | tee -a  "${mainlog}"
+   exit 1
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: Autoconfig execution count ${autoconfigcnt} completed successfully." | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP AUTOCONFIG: " | tee -a  "${mainlog}"
+    sleep 2
+	fi
+	unset rcode
+	sed -i '/connection/d' "${EBS_DOMAIN_HOME}"/config/config.xml
+	}
+
+	# run adcfgclone.pl with available values.
+	run_adcfgclone()
+	{
+  source "${clonerspfile}" > /dev/null 2>&1
+  envfile="${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+  if [[ ! -f ${envfile} ]];  then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Target Environment instance.properties file not found on application server.\n"
+      exit 1;
+  else
+      source "${scr_home}"/instance/"${dbupper}"/etc/"${dbupper}".prop
+      sleep 1
+  fi
+  unset envfile
+
+ if [[ -z "${apps_bkp_file}" ]] ; then
+    sleep 2
+    apps_bkp_file=$(cat "${appsourcebkupdir}"/runfs.latest)
+    appbkpfilefullpath="${appsourcebkupdir}"/"${apps_bkp_file}"
+    update_clonersp "appbkpfilefullpath" "${appbkpfilefullpath}"
+    update_clonersp "apps_bkp_file" "${apps_bkp_file}"
+    source "${clonerspfile}" > /dev/null 2>&1
+  fi
+
+  update_clonersp "apps_bkp_file" "${apps_bkp_file}"
+  update_clonersp "appbkpfilefullpath" "${appbkpfilefullpath}"
+  source "${clonerspfile}" > /dev/null 2>&1
+  if [[ -z "${runfs}" ]] || [[ -z "${patchfs}" ]] ; then
+	  if echo "${apps_bkp_file}" | grep -q "fs1"; then
+	    #echo -e "Inside fs1 block "
+			export runfs=fs1
+			export patchfs=fs2
+			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Run fs is set to ${runfs}." | tee -a  "${mainlog}"
+	  elif echo "${apps_bkp_file}" | grep -q "fs2"; then
+			export runfs=fs2
+			export patchfs=fs1
+			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Run fs is set to ${runfs}." | tee -a  "${mainlog}"
+	  else
+	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: ERROR: Run fs could not be identified. Backup file will not be restored. Exiting!!\n." | tee -a  "${mainlog}"
+	    sleep 2
+		  exit 1
+	  fi
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Run fs is set to ${runfs}." | tee -a  "${mainlog}"
 	fi
 
   update_clonersp "runfs" "${runfs}"
   update_clonersp "patchfs" "${patchfs}"
   source "${clonerspfile}" > /dev/null 2>&1
-	#Unzip backup file
 	targetrunfs="${apptargetbasepath}"/"${runfs}"
-	cd "${targetrunfs}" || echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: ERROR: Could not move to runfs location Exiting !!" &&  exit 1
-	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Target runfs location is set to:  ${targetrunfs}.  "
+	if [[ -d "${targetrunfs}" ]] ; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Target Run fs is set to ${runfs}." | tee -a  "${mainlog}"
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Target runfs location ${targetrunfs} could not be reached. Cannot proceed. Exiting !!." | tee -a  "${mainlog}"
+	  exit 1
+	fi
 
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Initiating Source application backup copy to Target application node.  "
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: SCP target string: ${appsosuser}@${trgapphost}.${labdomain}:${targtrunfs}/. "
-	  sleep 5
-	  scp -q -o TCPKeepAlive=yes "${appbkpfilefullpath}" "${appsosuser}"@"${trgapphost}"."${labdomain}":"${targtrunfs}"/.
+	update_clonersp "targetrunfs" "${targetrunfs}"
+  source "${clonerspfile}" > /dev/null 2>&1
 
-	  rcode=${?}
-	  if (( rcode > 0 )); then
-		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: ERROR: Application backup file could not be copied. EXITING !! \n "
-		  exit 1
-	  else
-		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP COPY: Application backup file copied to ${trgapphost}.${labdomain}.  "
-		  sleep 2
-	  fi
-	  unset rcode
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_module_task}:END MODULE:APP COPY "
-	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+#  if [[ -f "${appbkpfilefullpath}"  ]]; then
+#    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Application backup file found: ${apps_bkp_file}" | tee -a  "${mainlog}"
+#  else
+#    sleep 2
+#    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: ERROR: Application backup for ${srcappname} not found. Please check.EXITING!!"
+#    exit 1
+#  fi
+  update_clonersp "appbkpfilefullpath" "${appbkpfilefullpath}"
+  source "${clonerspfile}" > /dev/null 2>&1
 
-	  update_clonersp "appscopy_stage" "COMPLETED"
-	  update_clonersp "current_module_task" 4000
-	  update_clonersp "current_task_id" 4000
-
-	  source "${clonerspfile}" > /dev/null 2>&1
-
-fi
-
-}
-
-	#Validate and cleanup old stack
-	cleanup_and_restore_apps()
-	{
-	markerfile=${apptargetbasepath}/${runfs}/EBSapps/restore.complete
-
-	if [ -f ${markerfile} ];
-	then
-		chkrestorefile=`cat ${markerfile}`
-		if [ "${chkrestorefile}" = "${apps_bkp_file}" ];
-		then
-			# Detach Oracle homes from Inventory.
-			detach_apps_oh
-
-			echo -e "`date +"%d-%m-%Y %H:%M:%S"`: ${HOST_NAME}: MESSAGE: Apps tier backup file already restored. No need to restore backup." | tee -a ${logf}
-			echo -e "`date +"%d-%m-%Y %H:%M:%S"`: ${HOST_NAME}: MESSAGE: Clearing up last session directories." | tee -a ${logf}
-
-			rm -rf ${apptargetbasepath}/${patchfs}/EBSapps 2>/dev/null
-			rm -rf ${apptargetbasepath}/${patchfs}/inst 2>/dev/null
-			rm -rf ${apptargetbasepath}/${patchfs}/FMW_Home 2>/dev/null
-			rm -rf ${apptargetbasepath}/${runfs}/inst 2>/dev/null
-			rm -rf ${apptargetbasepath}/${runfs}/FMW_Home 2>/dev/null
-			sleep 2
+  if [[ "${appadcfgclonestage}" == "COMPLETED" ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: Application tier adcfgclone is already completed. Moving on .. " | tee -a  "${mainlog}"
+  else
+    if [[ -f "${appbkpfilefullpath}"  ]]; then
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: Application backup file found: ${apps_bkp_file}" | tee -a  "${mainlog}"
+    else
+      sleep 2
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP RESTORE: ERROR: Application backup for ${srcappname} not found. Please check.EXITING!!"
+      exit 1
+    fi
+    update_clonersp "appbkpfilefullpath" "${appbkpfilefullpath}"
+    source "${clonerspfile}" > /dev/null 2>&1
+    cleanup_and_restore_apps
+    validate_pre_adcfgclone
+	  # Validate pre-adcfgclone run checks
+		export CONFIG_JVM_ARGS="-Xms2048m -Xmx4096m"
+		if [[ "${runfs}" == "fs1" ]] || [[ "${runfs}" == "fs2" ]] ; then
+		  adcfgclonelog="${log_dir}"/adcfgcloneRun"${trgappname}"."${startdate}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: ************************************************ " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE:          starting adcfgclone from ${runfs} : Time 90 mins " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: ************************************************ " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: Logfile :${adcfgclonelog}" | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: " | tee -a  "${mainlog}"
+      unset ORACLE_HOME
+      unset ORA_NLS10
+      unset TNS_ADMIN
+			{ echo "${SRCAPPSPASS}" ; echo "${SRCWLSPASS}" ; echo "n" ; } | perl "${apptargetbasepath}"/"${runfs}"/EBSapps/comn/clone/bin/adcfgclone.pl component=appsTier pairsfile="${apppairsfile}" dualfs=yes >  "${adcfgclonelog}"  2>&1
+			_exitSt1=$?
 		else
-			# Detach Oracle homes from Inventory.
-			detach_apps_oh
-
-			echo -e "`date +"%d-%m-%Y %H:%M:%S"`: ${HOST_NAME}: MESSAGE: Clearing up old  directories." | tee -a ${logf}
-			# If marker file does not have same value as apps_bkp_file, then move old stack.
-			#move_old_stack
-			rm -rf ${apptargetbasepath}/${patchfs}/EBSapps 2>/dev/null
-			rm -rf ${apptargetbasepath}/${patchfs}/inst 2>/dev/null
-			rm -rf ${apptargetbasepath}/${patchfs}/FMW_Home 2>/dev/null
-			rm -rf ${apptargetbasepath}/${runfs}/EBSapps 2>/dev/null
-			rm -rf ${apptargetbasepath}/${runfs}/inst 2>/dev/null
-			rm -rf ${apptargetbasepath}/${runfs}/FMW_Home 2>/dev/null
-
-			# Restore apps tier backup
-			restore_apps_tier
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: Run fs is not validated. Make sure you have supplied fs1 or fs2. EXITING !!" | tee -a  "${mainlog}"
+			exit 1
 		fi
-	elif [ ! -f ${markerfile} ];
-	then
-		# Detach Oracle homes from Inventory.
-		detach_apps_oh
 
-		# If marker file not found, it means last untar session failed. Hence remove everything.
-		echo -e "`date +"%d-%m-%Y %H:%M:%S"`: ${HOST_NAME}: APP CLEANUP: This is a fresh session." | tee -a ${logf}
-		echo -e "`date +"%d-%m-%Y %H:%M:%S"`: ${HOST_NAME}: APP CLEANUP: Run and Patch fs will be removed." | tee -a ${logf}
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: Exit status for adcfgclone is ${_exitSt1} " | tee -a  "${mainlog}"
+		if [[ "${_exitSt1}" == "0" ]] ; then
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: ********  adcfgclone.pl is completed successfully  *******  " | tee -a  "${mainlog}"
+      update_clonersp "appadcfgclonestage" "COMPLETED"
+      source "${clonerspfile}" > /dev/null 2>&1
+		else
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CFGCLONE: ERROR:  adcfgclone.pl was failed. Please check the logs and restart. EXITING !! " | tee -a  "${mainlog}"
+		  update_clonersp "appadcfgclonestage" "FAILED"
+      source "${clonerspfile}" > /dev/null 2>&1
+			exit 1
+		fi
+  fi
+	}
 
-		rm -rf ${apptargetbasepath}/${patchfs}/EBSapps 2>/dev/null
-		rm -rf ${apptargetbasepath}/${patchfs}/inst 2>/dev/null
-		rm -rf ${apptargetbasepath}/${patchfs}/FMW_Home 2>/dev/null
-		rm -rf ${apptargetbasepath}/${runfs}/inst 2>/dev/null
-		rm -rf ${apptargetbasepath}/${runfs}/FMW_Home 2>/dev/null
-		rm -rf ${apptargetbasepath}/${runfs}/EBSapps 2>/dev/null
+  # Post adcfgclone steps part of POST clone.
+  postadcfgclone()
+  {
 
-		# Restore apps tier backup
-		restore_apps_tier
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP POST RESTORE: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+	runfsctx="${apptargetbasepath}/${runfs}/inst/apps/${CONTEXT_NAME}/appl/admin/${CONTEXT_NAME}.xml"
+	patchfsctx="${apptargetbasepath}/${patchfs}/inst/apps/${CONTEXT_NAME}/appl/admin/${CONTEXT_NAME}.xml"
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP POST RESTORE: Restoring TNS files.  " | tee -a  "${mainlog}"
+	chmod -R 775 "${currentextractdir}"/"${runfs}"/tns >/dev/null 2>&1
+	chmod -R 775 "${currentextractdir}"/"${patchfs}"/tns   >/dev/null 2>&1
+	cp -r  "${currentextractdir}"/"${runfs}"/tns/*  "${apptargetbasepath}"/"${runfs}"/inst/apps/"${CONTEXT_NAME}"/ora/10.1.2/network/admin/.   > /dev/null 2>&1
+	cp -r  "${currentextractdir}"/"${patchfs}"/tns/*  "${apptargetbasepath}"/"${patchfs}"/inst/apps/"${CONTEXT_NAME}"/ora/10.1.2/network/admin/. > /dev/null 2>&1
+	cp "${currentextractdir}"/app_others/xdo.cfg "${apptargetbasepath}"/fs1/EBSapps/appl/xdo/12.0.0/resource/.   > /dev/null 2>&1
+	cp "${currentextractdir}"/app_others/xdo.cfg "${apptargetbasepath}"/fs2/EBSapps/appl/xdo/12.0.0/resource/.  > /dev/null 2>&1
+
+	sleep 2
+  run_autoconfig
+  }
+
+	change_other_application_password()
+	{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+    source "${clonerspfile}" > /dev/null 2>&1
+
+  if [[ "${changeotherappspass}" != "COMPLETED"  ]] || [[ -z "${changeotherappspass}" ]]; then
+	  #gives workappspass
+	 validate_working_apps_password
+
+	  cd "${log_dir}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Changing SYSADMIN,ALLORACLE, XXEXPD Passwords. " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Executing APPS password validation  " | tee -a  "${mainlog}"
+	  "${FND_TOP}"/bin/FNDCPASS apps/"${workappspass}" 0 Y system/"${SYSTPASS}" USER   SYSADMIN  "${SYSADPASS}"  > "${log_dir}"/changeOtherPasswords."${startdate}" 2>&1
+	  "${FND_TOP}"/bin/FNDCPASS apps/"${workappspass}" 0 Y system/"${SYSTPASS}" ALLORACLE "${OALLPASS}"    >> "${log_dir}"/changeOtherPasswords."${startdate}" 2>&1
+	  "${FND_TOP}"/bin/FNDCPASS apps/"${workappspass}" 0 Y system/"${SYSTPASS}" ORACLE  XXEXPD "${EXPDPASS}"    >> "${log_dir}"/changeOtherPasswords."${startdate}" 2>&1
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: SYSADMIN,ALLORACLE, XXEXPD Password change -- Completed. " | tee -a  "${mainlog}"
+
+	  update_clonersp "changeotherappspass" "COMPLETED"
+	  source "${clonerspfile}" > /dev/null 2>&1
 	fi
 
 	}
 
+
+	change_runfs_password()
+	{
+
+    if [[ -f "/home/${trgappsosuser}/.${trgappname,,}_profile" ]]; then
+      source /home/"${trgappsosuser}"/."${trgappname,,}"_profile  >/dev/null 2>&1
+    else
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+      update_clonersp "session_state" "FAILED"
+      exit 1
+    fi
+
+
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  source /dba/etc/.egebs
+  export SRCAPPSPASS="${srcappspass}"
+  export SRCWLSPASS="${srcwlspass}"
+
+  if [[ -z "${SRCAPPSPASS}" ]] ; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Source Environment apps password is not loaded for autoconfig\n"
+    exit 1
+  fi
+	#Load target passwords
+	load_getpass_password
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Executing APPS password validation  " | tee -a  "${mainlog}"
+	chk_apps_password "${APPSPASS}" "${trgappname^^}"
+	_chkTpassRC=$?
+	sleep 2
+	if [[ "${_chkTpassRC}" -eq 0 ]] ; then
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: ====> APPS Password Change is not needed.<<====   " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+	  workappspass="${APPSPASS}"
+	  sleep 2
+	elif [[ "${_chkTpassRC}" -ne 0 ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   Testing connectivity with Source APPS password." | tee -a  "${mainlog}"
+		chk_apps_password  "${SRCAPPSPASS}" "${trgappname^^}"
+		_chkSrcpassRC=$?
+		sleep 2
+		if [[ "${_chkSrcpassRC}" -eq 0 ]] && [[ "${workappspass}" != "${APPSPASS}" ]]; then
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Database connection established with SOURCE APPS password." | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Changing APPS password for Runfs. " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: Logfile: ${log_dir}/resetAPPSpassword_${trgappname^^}.${startdate}  " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   ====> Changing APPS Password <<==== " | tee -a  "${mainlog}"
+			workappspass=${SRCAPPSPASS}
+			sleep 2
+			#FNDCPASS commands
+			touch "${log_dir}"/resetAPPSpassword_"${trgappname^^}"."${startdate}"
+			chmod 777 "${log_dir}"/resetAPPSpassword_"${trgappname^^}"."${startdate}"
+			"${FND_TOP}"/bin/FNDCPASS apps/"${workappspass}" 0 Y system/"${SYSTPASS}" SYSTEM APPLSYS "${APPSPASS}"  > "${log_dir}"/resetAPPSpassword_"${trgappname^^}"."${startdate}"  2>&1
+			chk_apps_password "${APPSPASS}" "${trgappname^^}"
+			_chkTpassRC=$?
+			sleep 2
+			if [[ "${_chkTpassRC}" -ne 0 ]]; then
+			  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: ERROR: Database connection could not be established with NEW APPS password.  " | tee -a  "${mainlog}"
+				exit 1
+			else
+			  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+			  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:  ====> APPS Password Changed Successfully by FNDCPASS. <<====   " | tee -a  "${mainlog}"
+			  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+			workappspass="${APPSPASS}"
+			fi
+
+		elif [[ "${_chkSrcpassRC}" -ne 0 ]] && [[ "${_chkTpassRC}" -ne 0 ]]; then
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE: ERROR: Database connection could not be established with any apps password (SOURCE and TARGET).  " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:        ABORTING Operation, Please make sure atleast one(source or target) password is working.  " | tee -a  "${mainlog}"
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:        Also check if database is available and listener is up." | tee -a  "${mainlog}"
+			sleep 2
+			exit 1
+		else
+			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP PASS CHANGE:   " | tee -a  "${mainlog}"
+		fi
+	fi
+
+  workwlspass=${SRCWLSPASS}
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Starting ADMIN server on RUNFS  " | tee -a  "${mainlog}"
+	if [[ "${FILE_EDITION}" == "run" ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Starting AdminServer with Source WLS Credentials " | tee -a  "${mainlog}"
+		{ echo "${workwlspass}" ; echo "${workappspass}" ; } | "${ADMIN_SCRIPTS_HOME}"/adadminsrvctl.sh start '-nopromptmsg'  > "${log_dir}"/startAdminServer1."${startdate}" 2>&1
+		exit_code=$?
+	elif [[ "${FILE_EDITION}" == "patch" ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: You are running Run FS AdminServer startup from PATCH FS.  " | tee -a  "${mainlog}"
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: File System Edition could not be determined. It should be run or patch. Environment not set.  " | tee -a  "${mainlog}"
+	fi
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Exit code returned from AdminServer Start ${exit_code}.  " | tee -a  "${mainlog}"
+	if [[ $exit_code -eq 0 ]] || [[  $exit_code -eq 2 ]]; then
+		sleep 2
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: AdminServer is available now  " | tee -a  "${mainlog}"
+	elif [[ $exit_code -eq 9 ]] || [[ $exit_code -eq 1 ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Source credentials not working, Starting AdminServer with Target Credentials.  " | tee -a  "${mainlog}"
+		{ echo "${WLSPASS}" ; echo "${workappspass}" ; } | "${ADMIN_SCRIPTS_HOME}"/adadminsrvctl.sh start '-nopromptmsg' > "${log_dir}"/startAdminServer2."${startdate}" 2>&1
+		exit_code=$?
+		if [[ $exit_code -eq 0 ]] || [[ $exit_code -eq 2 ]]; then
+			sleep 2
+			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: **** AdminServer is available, Weblogic Password Change is not needed ****  " | tee -a  "${mainlog}"
+			workwlspass=${WLSPASS}
+		elif [[ $exit_code -eq 9 ]] || [[  $exit_code -eq 1 ]]; then
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Both Source and Target Weblogic password are Invalid. Please validate the passwords.  " | tee -a  "${mainlog}"
+		exit 1
+		fi
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Weblogic Password validation failed, Both Source and Target weblogic passwords are not working.  " | tee -a  "${mainlog}"
+		exit 1
+	fi
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Running Context File Sync  (IGNORE stty errors).  " | tee -a  "${mainlog}"
+	{ echo "${workappspass}" ; echo "${workwlspass}" ; } |perl "${AD_TOP}"/bin/adSyncContext.pl -contextfile="${CONTEXT_FILE}"  > "${log_dir}"/Context_filesync1."${startdate}" 2>&1
+	exit_code=$?
+	sleep 5
+	if [[ $exit_code -eq 0 || $exit_code -eq 1 ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Context File Sync completed Successfully." | tee -a  "${mainlog}"
+	elif [[  $exit_code -eq 9 || $exit_code -eq 1 ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Context file sync failed. Invalid credentials passed.  " | tee -a  "${mainlog}"
+		exit_code=1
+		exit 0
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Context File Sync exit status Could not be identified !!  " | tee -a  "${mainlog}"
+		exit 1
+	fi
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Updating NEW apps Password to WLS Console. " | tee -a  "${mainlog}"
+	{ echo 'updateDSPassword' ; echo "${CONTEXT_FILE}" ; echo "${workwlspass}" ; echo "${workappspass}" ; } |perl "${FND_TOP}"/patch/115/bin/txkManageDBConnectionPool.pl > "${log_dir}"/Console_apps_passwordUpdate."${startdate}" 2>&1
+	exit_code=$?
+	sleep 2
+	if [[ $exit_code -eq 0 ]]; then
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: New APPS password updated in EbsDataSource Successfully. " | tee -a  "${mainlog}"
+	elif [[  $exit_code -eq 1 ]]; then
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Datasource password update failed, Invalid credentials passed. " | tee -a  "${mainlog}"
+		exit 1
+	else
+	    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: EbsDataSource Update Status Could not be identified.  " | tee -a  "${mainlog}"
+		exit 1
+	fi
+
+	if [[ "${workwlspass}" == "${WLSPASS}" ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: **** Weblogic Password is already changed. **** " | tee -a  "${mainlog}"
+	elif [   "${workwlspass}" != "${WLSPASS}" ]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Changing Weblogic Password (IGNORE stty errors).  " | tee -a  "${mainlog}"
+		{ echo "Yes" ; echo "${CONTEXT_FILE}" ; echo "${workwlspass}" ; echo "${WLSPASS}" ; echo "${workappspass}" ;} | perl "${FND_TOP}"/patch/115/bin/txkUpdateEBSDomain.pl -action=updateAdminPassword > "${log_dir}"/WLS_password_changeRunfs1."${startdate}" 2>&1
+		exit_code=$?;
+		if [[ $exit_code -eq 0 ]]; then
+			sleep 2
+			echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: **** Weblogic Password is changed successfully. **** " | tee -a  "${mainlog}"
+			workwlspass=${WLSPASS}
+		elif [[   $exit_code -ne 0 ]] ; then
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Error received while changing weblogic password. Please check. " | tee -a  "${mainlog}"
+		else
+		  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Weblogic Password change status could not be validated, make sure you verify." | tee -a  "${mainlog}"
+		fi
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Both weblogic passwords are invalid. " | tee -a  "${mainlog}"
+	fi
+
+	# Autoconfig run
+	run_autoconfig
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: Stopping ADMINSERVER on Application Node. " | tee -a  "${mainlog}"
+	{ echo "${workwlspass}" ; echo "${workappspass}" ; } | "${ADMIN_SCRIPTS_HOME}"/adadminsrvctl.sh stop '-nopromptmsg'  > "${log_dir}"/stopAdminServerRunfs4."${startdate}" 2>&1
+	exit_code=$?
+	if [[ $exit_code -eq 0 ]] || [[ $exit_code -eq 2 ]] ; then
+	sleep 2
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: AdminServer is down for runfs. " | tee -a  "${mainlog}"
+		workwlspass=${WLSPASS}
+	elif [[ $exit_code -eq 9  ]] || [[ $exit_code -eq 1 ]]; then
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:WLS PASS CHANGE: ERROR: Target Weblogic password is also Invalid. Please validate the passwords." | tee -a  "${mainlog}"
+		exit 1
+	fi
+
+	# Changing other Application passwords.
+	change_other_application_password
+	}
+
+
+	xxexpd_top_softlink()
+	{
+   if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+     source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+   else
+     echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CUSTOM SOFTLINKS: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+     update_clonersp "session_state" "FAILED"
+     exit 1
+   fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+	# Create SOFTLINKS in XXEXPD_TOP
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CUSTOM SOFTLINKS: Create SOFTLINKS in XXEXPD_TOP. " | tee -a  "${mainlog}"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CUSTOM SOFTLINKS: Logfile: ${log_dir}/xxexpd_top_softlinks.${startdate} " | tee -a  "${mainlog}"
+	cd "${XXEXPD_TOP}"/bin
+
+	case ${XXEXPD_TOP} in
+	*xxexpd* )
+	   cd "${XXEXPD_TOP}"/bin
+	   sh  ./recreate_softlink_runFS.sh  > "${log_dir}"/xxexpd_top_softlinks."${startdate}"
+	  ;;
+	* ) echo "Error : XXEXPD_TOP not set, Softlinks not created !!"  ;;
+	esac
+	sleep 2
+	update_clonersp "appssoftlink" "COMPLETED"
+  source "${clonerspfile}" > /dev/null 2>&1
+
+	}
+
+	gen_custom_env()
+	{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CUSTOM ENV: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+	####### Create RUN and PATCH fs Custom env file
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: Create RUN and PATCH fs Custom env file. " | tee -a  "${mainlog}"
+	if [[ -f "${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env" ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: Runfs Custom ENV exists as : " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:   ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env. " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	else
+		echo "export XXEXPD_PMTS=/u05/oracle/BANKS/${trgappname}/Payments"  > ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_DD=/u05/oracle/BANKS/${trgappname}/DirectDebit" >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export PATH=/u04/oracle/perforce:\$PATH:/dba/bin" >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export P4PORT=tcp:perforce:1985"  >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_TOP_NE=/u04/oracle/R12/${trgappname}/XXEXPD/12.0.0" >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export CONFIG_JVM_ARGS=\"-Xms2048m -Xmx4096m\""  >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_JAVA11_HOME=/usr/local/jdk11" >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXGAH_TOP_NE=/u04/oracle/R12/${trgappname^^}/XXGAH/12.0.0" >> ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		chmod 775 "${RUN_BASE}"/inst/apps/"${CONTEXT_NAME}"/appl/admin/custom"${CONTEXT_NAME}".env >/dev/null 2>&1
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: Runfs Custom ENV created as : " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: ${RUN_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env. " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	fi
+
+	if [[ -f "${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env" ]]; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: Patchfs Custom ENV exists as : " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV:   ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env" | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	else
+		echo "export XXEXPD_PMTS=/u05/oracle/BANKS/${trgappname}/Payments"  > ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_DD=/u05/oracle/BANKS/${trgappname}/DirectDebit" >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export PATH=/u04/oracle/perforce:\$PATH:/dba/bin" >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export P4PORT=tcp:perforce:1985"  >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_TOP_NE=/u04/oracle/R12/${trgappname}/XXEXPD/12.0.0" >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export CONFIG_JVM_ARGS=\"-Xms2048m -Xmx4096m\""  >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXEXPD_JAVA11_HOME=/usr/local/jdk11" >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		echo "export XXGAH_TOP_NE=/u04/oracle/R12/${trgappname^^}/XXGAH/12.0.0" >> ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env
+		chmod 775 "${PATCH_BASE}"/inst/apps/"${CONTEXT_NAME}"/appl/admin/custom"${CONTEXT_NAME}".env >/dev/null 2>&1
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+		echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: Patchfs Custom ENV created as : " | tee -a  "${mainlog}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Custom ENV: ${PATCH_BASE}/inst/apps/${CONTEXT_NAME}/appl/admin/custom${CONTEXT_NAME}.env. " | tee -a  "${mainlog}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	fi
+	}
+
+	compile_jsp()
+	{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:CUSTOM JSP: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Compile JSP: Compiling JSP - Time:  10mins." | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Compile JSP: Logfile: ${log_dir}/Compile_jsp${trgappname^^}.${startdate}" | tee -a  "${mainlog}"
+	# Compiling JSP
+	perl "${FND_TOP}"/patch/115/bin/ojspCompile.pl --compile --flush -p 80 > "${log_dir}"/Compile_jsp"${trgappname^^}"."${startdate}" 2>&1
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:Compile JSP: Compiling JSP - COMPLETED." | tee -a  "${mainlog}"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	}
+
+
+	run_app_etcc()
+	{
+	  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+      source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+    else
+      echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP ETCC JSP: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+      update_clonersp "session_state" "FAILED"
+      exit 1
+    fi
+
+  source "${clonerspfile}" > /dev/null 2>&1
+
+	#gives workappspass
+	validate_working_apps_password
+	cd "${common_home}/etcc/"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP ETCC JSP: Running ETCC on application node." | tee -a  "${mainlog}"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP ETCC JSP: Logfile: ${log_dir}/appnode_etcc_${trgappname^^}.${startdate}" | tee -a  "${mainlog}"
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	{ echo "${workappspass}" ; } | sh "${common_home}"/etcc/checkMTpatch.sh  > "${log_dir}"/appnode_etcc_"${trgappname^^}"."${startdate}" 2> /dev/null  &
+	sleep 2
+	}
+
+misc_housekeeping()
+{
+
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:MISC APP: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  if [[ "${appmiscsteps}" != "COMPLETED"  ]] || [[ -z "${appmiscsteps}" ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+  xxexpd_top_softlink
+  gen_custom_env
+  compile_jsp
+  run_app_etcc
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+
+  update_clonersp "appmiscsteps" "COMPLETED"
+  source "${clonerspfile}" > /dev/null 2>&1
+  fi
+}
+
+user_password_reset()
+	{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+
+  source "${clonerspfile}" > /dev/null 2>&1
+	#gives workappspass
+	validate_working_apps_password
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Generating Application User Password reset scripts." | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Script: ${log_dir}/${trgappname^^}_resetpassword_fnd_user.sh" | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+
+sqlplus -s apps/"${workappspass}"@"${trgappname^^}" << EOF > /dev/null
+set head off
+set feed off
+set line 999
+set pages 200
+set lines 300
+
+spool ${log_dir}/${trgappname^^}_resetpassword_fnd_user.sh
+select '. /home/${trgappsosuser}/.'||lower('${trgappname,,}')||'_profile  > /dev/null' from dual;
+select '  FNDCPASS apps/${workappspass} 0 Y system/${SYSTPASS} USER  '|| USER_NAME || ' welcome123 '  from fnd_user where (last_logon_date >= sysdate-120 or trunc(creation_date)=trunc(sysdate) or last_logon_date is null )
+and end_date is null and user_name
+not in ('AME_INVALID_APPROVER','APPLSYS','APPS','XXEXPD',
+'ANONYMOUS',
+'APPSMGR',
+'ASADMIN',
+'ASGADM',
+'ASGUEST',
+'AUTOINSTALL',
+'CHAINSYS',
+'CONCURRENT MANAGER',
+'CORP_CONVERSION',
+'CTLMSCHD',
+'CTLMSCHD2',
+'EXPD_INT',
+'FEEDER SYSTEM',
+'GUEST',
+'IBE_ADMIN',
+'IBE_GUEST',
+'IBEGUEST',
+'IEXADMIN',
+'INITIAL SETUP',
+'IRC_EMP_GUEST',
+'IRC_EXT_GUEST',
+'MERCH_CONVERSION',
+'MOBILEADM',
+'MOBILEDEV',
+'OAMACCESS',
+'OP_CUST_CARE_ADMIN',
+'OP_SYSADMIN',
+'PORTAL30',
+'PORTAL30_SSO',
+'STANDALONE BATCH PROCESS',
+'SYSADMIN',
+'VBANK_CONVERSION',
+'WIZARD',
+'XML_USER');
+spool off
+
+exit
+EOF
+
+  if [[ -f "${log_dir}/${trgappname^^}_resetpassword_fnd_user.sh" ]]; then
+	  sed -i '/SYSADMIN/d' "${log_dir}"/"${trgappname^^}"_resetpassword_fnd_user.sh
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: ****************** Resetting FND User Passwords  ***********************************" | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Logfile: ${log_dir}/${trgappname^^}reset_user_password.${startdate}" | tee -a  "${mainlog}"
+	  sh "${log_dir}/${trgappname^^}_resetpassword_fnd_user.sh" > "${log_dir}"/reset_user_password"${trgappname^^}"."${startdate}"  2>&1
+	  sleep 2
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Password reset script: COMPELTED" | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER PASS CHANGE: Password reset script not found, FND USER Password reset could not be completed." | tee -a  "${mainlog}"
+  fi
+
+	}
+
+
+fnd_upload()
+{
+
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND UPLOAD: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+	if [[ ! -d "${log_dir}/uploadlog" ]] ; then
+		mkdir -p "${log_dir}/uploadlog" >/dev/null 2>&1
+	fi
+
+	cd "${log_dir}/uploadlog"
+
+	if [[ -f "${uploaddir}/fnd_lookups/app_upload_fndlookup.sh" ]] ; then
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND LOOKUP: Uploading FND Lookups. " | tee -a  "${mainlog}"
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND LOOKUP: Logfile: ${log_dir}/Upload_lookups${trgappname^^}.${startdate} " | tee -a  "${mainlog}"
+	  sh "${uploaddir}"/fnd_lookups/app_upload_fndlookup.sh  > "${log_dir}"/Upload_lookups"${trgappname^^}"."${startdate}"  2>&1
+	  update_clonersp "appsfndlookup" "COMPLETED"
+    source "${clonerspfile}" > /dev/null 2>&1
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND LOOKUP: Uploading FND Lookups - COMPLETED " | tee -a  "${mainlog}"
+	else
+	  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND LOOKUP: Uploading script not found. FND LOOKUPS will not be uploaded. " | tee -a  "${mainlog}"
+  fi
+
+  if [[ -f "${uploaddir}/fnd_users/app_upload_fnd_user.sh" ]] ; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER RESP: Uploading FND User Responsibilities. " | tee -a  "${mainlog}"
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER RESP: Logfile: ${log_dir}/Upload_fnd_userResp${trgappname^^}.${startdate} " | tee -a  "${mainlog}"
+    sh "${uploaddir}"/fnd_users/app_upload_fnd_user.sh  > "${log_dir}"/Upload_fnd_userResp"${trgappname^^}"."${startdate}" 2>&1
+    update_clonersp "appsfnduserresp" "COMPLETED"
+    source "${clonerspfile}" > /dev/null 2>&1
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER RESP: Uploading FND User Responsibilities. - COMPLETED " | tee -a  "${mainlog}"
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:FND USER RESP: Uploading FND User Responsibilities.script not found. FND USER RESP will not be uploaded. " | tee -a  "${mainlog}"
+  fi
+
+	rm -f L*.log  /home/"${trgappsosuser}"/L*.log >/dev/null 2>&1
+	rm -f "${log_dir}"/uploadlog/L*log >/dev/null 2>&1
+	user_password_reset
+}
+
+compileinvalids()
+	{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:COMPILE INVALIDS: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:COMPILE INVALIDS: Compiling invalid objects." | tee -a  "${mainlog}"
+	export SYSTUSER=$(/dba/bin/getpass "${trgappname^^}" system)
+	export SYSTPASS=$(echo "${SYSTUSER}" | cut -d/ -f 2)
+
+sqlplus  sys/"${SYSTPASS}@${trgappname}" 'as sysdba'  << EOF > /dev/null
+set echo on ;
+spool ${log_dir}/spool_CompileInvalidObjects${trgappname^^}.${startdate}
+exec sys.utl_recomp.recomp_parallel(10) ;
+exec sys.utl_recomp.recomp_parallel(10) ;
+exec sys.utl_recomp.recomp_parallel(10) ;
+SPOOL OFF ;
+exit
+EOF
+	echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:COMPILE INVALIDS: Compiling invalid objects: COMPLETED" | tee -a  "${mainlog}"
+	}
+
+start_application()
+{
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  export APPSUSER=$(getpass "${trgappname^^}" apps)
+  export APPSPASS=$(echo "${APPSUSER}" | cut -d/ -f 2)
+  export WLSUSER=$(getpass "${trgappname^^}" weblogic)
+  export WLSPASS=$(echo "${WLSUSER}" | cut -d/ -f 2)
+
+  unpw="${APPSUSER}@${trgappname}"
+sqlplus -s -L  /nolog > /dev/null 2>&1 <<EOF
+whenever sqlerror exit 1
+whenever oserror exit 1
+connect ${unpw}
+exit
+EOF
+
+  if [[ $? -ne 0 ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: APPS passwords are not working, Application services will not be started." | tee -a  "${mainlog}"
+    exit 1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: *******  APPS Password is working  *******" | tee -a  "${mainlog}"
+  fi
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: Starting Application services on ${HOST_NAME}" | tee -a  "${mainlog}"
+
+  { echo "apps" ; echo "${APPSPASS}" ; echo "${WLSPASS}" ; } | "${ADMIN_SCRIPTS_HOME}"/adstrtal.sh  -nopromptmsg > "${log_dir}"/startApplication."${HOST_NAME}"."${startdate}" 2>&1
+
+  if [[ ${?} -gt 0 ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: ERROR: Could not start all application services on ${HOST_NAME}" | tee -a  "${mainlog}"
+  	exit 1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START SERVICES: Application services start completed successfully on ${HOST_NAME}" | tee -a  "${mainlog}"
+  	sleep 2
+  fi
+
+  update_clonersp "startapplication" "COMPLETED"
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START CM: Checking SCRAMBLE sql completion." | tee -a  "${mainlog}"
+if [[ "${db_scramble_sql}" == "COMPLETED" ]] ; then
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START CM: SCRAMBLE sql are completed." | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START CM: Starting Concurrent Manager Services. " | tee -a  "${mainlog}"
+  { echo "apps" ; echo "${APPSPASS}" ; } | "${ADMIN_SCRIPTS_HOME}"/adcmctl.sh start > "${log_dir}"/startConcurrentManager"${HOST_NAME}"."${startdate}" 2>&1
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START CM: Concurrent manager services are started. " | tee -a  "${mainlog}"
+
+  update_clonersp "startcmservice" "COMPLETED"
+else
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP START CM: Concurrent manager services are not started. " | tee -a  "${mainlog}"
+  update_clonersp "startcmservice" "STOP"
+fi
+
+}
+
+apps_sql()
+{
+ if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP SQL: Target Env file not found. Exiting !! "  | tee -a  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  export APPSUSER=$(getpass "${trgappname^^}" apps)
+  export APPSPASS=$(echo "${APPSUSER}" | cut -d/ -f 2)
+
+  unpw="${APPSUSER}@${trgappname}"
+sqlplus -s -L  /nolog > /dev/null 2>&1 <<EOF
+whenever sqlerror exit 1
+whenever oserror exit 1
+connect ${unpw}
+exit
+EOF
+
+  if [[ $? -ne 0 ]]; then
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP SQL: APPS passwords are not working, Application SQL will not be run." | tee -a  "${mainlog}"
+    exit 1
+  fi
+
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APPS SQL: Running APPS SQL log: ${log_dir}/spool_appssql.appnode.${startdate} " | tee -a "${mainlog}"
+
+sqlplus  apps/"${APPSPASS}"@"${trgappname^^}" << EOF  >/dev/null
+set echo on ;
+spool ${log_dir}/spool_appssql.appnode.${trgappname^^}.${startdate}
+@${inst_sql}/pdb_apps_sql.sql
+spool off
+spool ${log_dir}/spool_loadexrates.appnode.${trgappname^^}.${startdate}
+@${inst_sql}/loadExRates.sql.sql
+spool off
+exit
+EOF
+
+}
+
+sql_validate()
+{
+
+ if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP FINAL: Target Env file not found. Exiting !! "  | tee -a  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+  source "${clonerspfile}" > /dev/null 2>&1
+
+  export APPSPASS=$(getpass "${trgappname^^}" apps | cut -d/ -f 2)
+
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+  echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP FINAL: Running validation sql. Time 5 mins "  | tee -a  "${mainlog}"
+sqlplus -s apps/${APPSPASS}@${trgappname^^} << EOF
+set termout off
+set feedback off
+set verify off
+set pagesize 1000
+SET MARKUP HTML ON SPOOL ON
+spool ${log_dir}/${trgappname^^}_sql_validation.html
+@${inst_sql}/pdb_apps_validate.sql
+spool off
+SET MARKUP HTML OFF
+exit
+EOF
+
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP FINAL: SQL validation completed. Sending email ... "  | tee -a  "${mainlog}"
+        mutt -e 'set content_type="text/html"' dikumar@expediagroup.com,erpappen@expedia.com -s "${trgappname^^}: Post clone Validation " <  "${log_dir}/${trgappname^^}_sql_validation.html"
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP FINAL: Validation email sent. "  | tee -a  "${mainlog}"
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+
+}
+
+
+final_steps()
+{
+
+  if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+    source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+  else
+    echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP FINAL: Target Env file not found. Exiting !! "  | tee -a  "${mainlog}"
+    update_clonersp "session_state" "FAILED"
+    exit 1
+  fi
+source "${clonerspfile}" > /dev/null 2>&1
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+apps_sql
+compileinvalids
+# Handover control to db script.
+update_clonersp "control_owner" "db"
+app_spin
+run_autoconfig
+start_application
+sql_validate
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}: " | tee -a  "${mainlog}"
+
+}
+
 #******************************************************************************************************##
 ##	Execute application steps
 #******************************************************************************************************##
-workappspass=$1
-workwlspass=$2
+#SRCAPPSPASS=$1
+#SRCWLSPASS=$2
+echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP CONTROL CHECK: Checking for Application script execution go ahead."
+app_spin
 
-if [[ "${current_task_id}" -ge 600 ]]  && [[ "${current_task_id}"  -le 3500 ]] ; then
+if [[ "${current_task_id}" -ge 600 ]]  && [[ "${current_task_id}"  -le 2900 ]] ; then
   echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:APP TASK ID CHECK: TASK ID is out of range for Application script execution."
   exit 1
 fi
 
 mainlog="${log_dir}"/mainlogapplication."${startdate}"
 
-for task in $(seq "${current_task_id}" 1 1800 )
+
+for task in $(seq "${current_task_id}" 1 5000 )
 do
   case $task in
     "50")
@@ -579,14 +1638,108 @@ do
           echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
           echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END MODULE:PREPARE APP "
           echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
-          update_clonersp "current_task_id" 1000
-          update_clonersp "current_module_task" 1000
-          exit 0  ;;
+          update_clonersp "current_task_id" "1000"
+          update_clonersp "current_module_task" "${current_task_id}"
+          update_clonersp "control_owner" "db"
+          #exit 0  ;;
+          #Script will wait for control_owner to be changed to app.
+          app_spin ;;
 
     "3000")
           echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
-          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START MODULE:CONFIG APP "
-          update_clonersp "current_task_id" 520 ;;
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START MODULE:RESTORE APP "
+          update_clonersp "current_task_id" 3100 ;;
+    "3100")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+
+          source /dba/etc/.egebs
+          export SRCAPPSPASS="${srcappspass}"
+          export SRCWLSPASS="${srcwlspass}"
+
+          if [[ -z "${SRCAPPSPASS}" ]] ; then
+            echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Source Environment apps password is not loaded.\n"
+            exit 1
+          elif [[ -z "${SRCWLSPASS}" ]] ; then
+            echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: ERROR: Source Environment weblogic password is not loaded.\n"
+            exit 1
+          fi
+
+          run_adcfgclone
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "3500" ;;
+    "3500")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END MODULE:RESTORE APP "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "4000"
+          update_clonersp "current_module_task" "${current_task_id}"  ;;
+    "4000")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START MODULE:POST APP RESTORE "
+          if [[ -f "/home/$(whoami)/.${trgappname,,}_profile" ]]; then
+            source /home/"$(whoami)"/."${trgappname,,}"_profile  >/dev/null 2>&1
+          else
+            echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:POST APP RESTORE: Target Env file not found. Exiting !! "  | tee -a "${appextractlog}"  "${mainlog}"
+            update_clonersp "session_state" "FAILED"
+            exit 1
+          fi
+          source "${clonerspfile}" > /dev/null 2>&1
+          update_clonersp "current_task_id" 4100 ;;
+    "4100")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          postadcfgclone
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "4200" ;;
+    "4200")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          change_runfs_password
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "4300" ;;
+    "4300")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          misc_housekeeping
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "4400" ;;
+    "4400")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          fnd_upload
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "4500" ;;
+    "4500")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:START TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          final_steps
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END TASK "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "5000" ;;
+    "5000")
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:END MODULE:RESTORE APP "
+          echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}:${current_task_id}:"
+          update_clonersp "current_task_id" "5000"
+          update_clonersp "current_module_task" "${current_task_id}"  ;;
 
   *)
     :
@@ -604,7 +1757,6 @@ echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: APP : "
 echo -e "$(date +"%d-%m-%Y %H:%M:%S"):${HOST_NAME}: APP : "
 
 exit
-
 #******************************************************************************************************##
 #  **********   E N D - O F - A P P L I C A T I O N - R E S T O R E - S C R I P T   **********
 #******************************************************************************************************##
